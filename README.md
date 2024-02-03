@@ -8,7 +8,7 @@ If you have conda installed on your local machine, you can replicate the code as
 
 2. Activate virtual environment:
 
-    $`conda activate coding challenge`
+    $`conda activate coding_challenge`
 
 3. Launch Jupyter Lab:
 
