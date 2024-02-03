@@ -114,8 +114,6 @@ df.head().style
 # - for the geographic features it seems reasonable to consider relative measures in the first place (i.e. `q_5th Quint by Total HH`, `q_Uni by Total Pop` and `*:Per Capita`)
 # - I also consider `q_2017 Total Households` to understand whether the mere size of the geographic region has a high predictive power on purchases
 
-df_reduced = df.loc[df.b_in_kontakt_gewesen==1]
-
 df = df.drop(columns=['b_in_kontakt_gewesen', 'q_2017 HHs: 5th Quintile (68.759 and above)', 'q_2017 Pop 15+/Edu: University, Fachhochschule', 'q_2017 Total Population'])
 
 sns.heatmap(df.drop(columns=['fakeID', 'b_gekauft_gesamt']).corr(), vmin=-1, vmax=1)
@@ -124,7 +122,7 @@ sns.heatmap(df.drop(columns=['fakeID', 'b_gekauft_gesamt']).corr(), vmin=-1, vma
 
 # ## Which features drive the purchase decision?
 
-# To answer this question we choose a logistic regression. First of all, this allows us to judge whether the influence of the selected features are statistically significant. Given the small sample size this important to consider especially when aiming at the development of a predictive model for the priorization of customers in lead generation. For such a predictive model we run into the risk that the sample may not be representative or that the performance metrics resulting from an even smaller test set may not be representative either. However, if we find on the small sample statistically significant correlations between certain features and the target variable, we can be more confident in developing a model that is tuned for out-of-sample prediction. Note, for this first step I do not do a split into training and test sets but rather focus on the statistical significance therefore trying to get the most out of the small sample size.
+# To answer this question we choose a logistic regression. First of all, this allows us to judge whether the influence of the selected features are statistically significant. Given the small sample size this important to consider especially when aiming at the development of a predictive model for the priorization of customers in lead generation. If we find on the small sample statistically significant correlations between certain features and the target variable, we can be more confident in developing a model that is tuned for out-of-sample prediction. Note, for this first step I do not do a split into training and test sets but rather focus on the statistical significance therefore trying to get the most out of the small sample size.
 
 X = df.drop(columns=['fakeID', 'b_gekauft_gesamt'])
 y = df['b_gekauft_gesamt']
@@ -140,7 +138,7 @@ results = logit_model.fit()
 
 results.summary()
 
-# We see that some features show a statistically significant correlation with the target variable (`b_specialisation_d:f`, `b_specialisation_j`, `q_2017 Average Household Size`, `q_Uni by Total Pop`, `q_2017 Personal Care: Per Capita`) which seems also to be supported by the simple visualization below (discrimination in target variable by these features). This gives a first hint that developing a predictive model based on potential customer's features may be a succesful endavour for coming with an automated priorization in lead generation.
+# We see that some features show a statistically significant correlation with the target variable (`b_specialisation_d:f`, `b_specialisation_j`, `q_2017 Average Household Size`, `q_Uni by Total Pop`, `q_2017 Personal Care: Per Capita`) which seems also to be supported by the simple visualization below (discrimination in target variable by these features). This gives a first hint that developing a predictive model based on potential customer's features may be a succesful endavour for coming up with an automated priorization in lead generation. Nonetheless, the majority of features shows no statistically significant correlation with the target, so let us see whether we can develop a classifier capable of reliably distinguishing potential customers who make a purchase and those wo do not make a purchase.
 
 plot_describe(df, columns=df.drop(columns=['fakeID']).columns, hue='b_gekauft_gesamt')
 
@@ -161,7 +159,7 @@ md(f"The original training/test set contains {round(y_train.sum()/len(y_train)*1
 # In the following, we train four commonly used ML classification models for the purpose of testing whether the priorization of lead generation can be automated via a predictive model which reliably indicates which potential customers have a higher/lower probability to make purchases based on their features that are typically known at inferece. Our setup is as follows:
 # - for the sake of comparability we train on both the oversampled and the original training data
 # - we aim at approximating the best set of hyperparameters on validation sets using cross-validation in order to prevent overfitting
-# - we focus on optimizing the F1-Score for the minority group. In other words, our goal is to create a classification model that performs well in identifying the maximum number of leads who have made a purchase (Recall), while also ensuring that the leads predicted as having made a purchase actually have made a purchase (Precision).
+# - we focus on optimizing the F1-Score for the minority group. In other words, our goal is to create a classification model that performs well in identifying the maximum number of potential customers who have made a purchase (Recall), while also ensuring that the potential customers predicted as having made a purchase actually have made a purchase (Precision).
 # - for scale sensitive models (Support Vector Machine) we scale the features by substracting their mean and dividing by their standard deviation
 
 # +
@@ -234,9 +232,11 @@ for model_name, pipeline in tqdm(pipelines):
             'MEAN_SCORE': grid_search.cv_results_['mean_test_score']})])
 # -
 
+# For each model look at the best performing specification on the original validation sets and the oversampled validation sets.
+
 df_model.sort_values('MEAN_SCORE', ascending=False).groupby(['MODEL', 'SAMPLING']).head(1).sort_values('MODEL')
 
-md(f"The best performing model is a {df_model.sort_values('MEAN_SCORE', ascending=False).iloc[0].MODEL} with an average F1-Score of {round(df_model.sort_values('MEAN_SCORE', ascending=False).iloc[0].MEAN_SCORE*100,2)}% on the validation folds. Little surprisingly, oversampling strongly helps the model to learn from the minority group since for all models the performance is best when being trained on the oversampled training data. The crucial question is how well the best performing model performs when being confronted with the real-world distribution of the target variable. For this purpose, we test the best model's performance on the test set.")
+md(f"The best performing model is a {df_model.sort_values('MEAN_SCORE', ascending=False).iloc[0].MODEL} with an average F1-Score of {round(df_model.sort_values('MEAN_SCORE', ascending=False).iloc[0].MEAN_SCORE*100,2)}% on the validation folds. Little surprisingly, oversampling strongly helps the model to learn from the minority group since for all models (except Logistic Regression) the performance is best when being trained on the oversampled training data. The crucial question is how well the best performing model performs when being confronted with the real-world distribution of the target variable. For this purpose, we test the best model's performance on the test set.")
 
 # +
 # Define the best performing model
@@ -256,9 +256,9 @@ print(classification_report(y_true=y_test, y_pred=y_pred))
 
 # We can see that the best performing model does not generalize well:
 # - from the 11 positive labels (potential customer made purchase) in the test data only 2 have been detected by the classifier (Recall = 2/11 = 0.18)
-# - for 23 leads in the test data the classifier has predicted that they make a purchase. Only 2 of them have indeed made a purchase (Precision = 2/23 = 0.09)
+# - for 23 potential customers in the test data the classifier has predicted that they make a purchase. Only 2 of them have indeed made a purchase (Precision = 2/23 = 0.09)
 #
-# This means that when the classifier is confronted with the real distribution of target variable it does not help in reliably identifying those potential customer which end up making a purchase.
+# This means that when the classifier is confronted with the real distribution of target variable it does not help in reliably identifying those potential customers which end up making a purchase.
 
 # These results come with many caveats:
 # - zero knowledge about the actual business case, i.e. no exchange with process-owning unit, no information on how lead contacting is currently undertaken etc.
